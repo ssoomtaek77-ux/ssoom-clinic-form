@@ -6,11 +6,13 @@ import google.generativeai as genai
 # ========================
 st.set_page_config(page_title="일반 질환 기초 문진표", page_icon="☁️", layout="wide")
 
-# 👉 Streamlit Secrets에서 API 키 읽기
-API_KEY = st.secrets["GOOGLE_API_KEY"]
+API_KEY = st.secrets.get("GOOGLE_API_KEY")
+if not API_KEY:
+    st.error("관리자: Streamlit Secrets에 GOOGLE_API_KEY를 설정하세요.")
+    st.stop()
 genai.configure(api_key=API_KEY)
 
-MODEL = "gemini-1.5-flash"   # ⚡️쿼터 효율 좋은 모델 (pro 대신 flash)
+MODEL = "gemini-1.5-flash"
 
 # ========================
 # 유틸 함수
@@ -24,15 +26,18 @@ def call_ai(prompt: str) -> str:
         return f"❌ 오류: {e}"
 
 def copy_button(label, text, key):
-    """복사 버튼: 텍스트를 클립보드에 복사"""
-    st.code(text or "출력 없음")
-    st.button(label, key=key, on_click=lambda: st.session_state.update({"_copy": text}))
+    st.download_button(
+        label=label,
+        data=text,
+        file_name="result.txt",
+        mime="text/plain",
+        key=key
+    )
 
 # ========================
-# UI 구성
+# UI 시작
 # ========================
-st.title("☁️ 일반 질환 기초 문진표")
-st.caption("작성하신 문진 내용은 진료 목적 외에는 사용되지 않으며, 개인정보 보호법에 따라 안전하게 관리됩니다.")
+st.title("일반 질환 기초 문진표")
 
 with st.form("patient_form"):
     st.subheader("환자 기본정보")
@@ -61,12 +66,13 @@ with st.form("patient_form"):
     st.subheader("5) 내원 빈도")
     visit = st.selectbox("선택", ["매일 통원","주 3~6회","주 1~2회","기타"])
 
-    submitted = st.form_submit_button("① 문진 요약 생성")
+    submitted = st.form_submit_button("① 문진 요약 & AI 제안 생성")
 
 # ========================
-# 문진 데이터 정리
+# 데이터 구조화
 # ========================
-patient_data = f"""
+if submitted:
+    patient_data = f"""
 이름: {name}, 나이: {age}
 혈압/맥박: {bp}
 증상: {", ".join(symptoms+[symptom_etc] if symptom_etc else symptoms)}
@@ -76,44 +82,49 @@ patient_data = f"""
 내원 빈도: {visit}
 """
 
-# ========================
-# 문진 요약
-# ========================
-st.subheader("📌 문진 요약")
-if submitted:
+    # 문진 요약
     summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
-    st.write(summary)
-    copy_button("요약 복사", summary, key="copy_sum")
-else:
-    st.info("아직 생성하지 않았습니다.")
+    st.session_state["summary"] = summary
 
-# ========================
-# AI 제안
-# ========================
-st.subheader("🤖 AI 제안 (분류/치료/기간/주의사항)")
-if submitted:
+    # AI 제안
     plan_prompt = f"""
 너는 한의원 상담 보조 도우미다.
 환자 문진을 보고:
 1) 급성/만성/웰니스 분류
 2) 권장 치료기간
-3) 권장 급여/비급여 항목 (항상 내가 제공한 카테고리 안에서만 선택)
+3) 권장 급여/비급여 항목 (반드시 내가 제공한 카테고리 안에서만 선택)
 4) 복용 중 약물이 있다면 병용 시 주의사항
 
 문진 내용:
 {patient_data}
 """
     ai_plan = call_ai(plan_prompt)
-    st.write(ai_plan)
-    copy_button("AI 제안 복사", ai_plan, key="copy_plan")
+    st.session_state["ai_plan"] = ai_plan
+
+# ========================
+# 문진 요약 (고정)
+# ========================
+st.subheader("📌 문진 요약")
+if "summary" in st.session_state:
+    st.write(st.session_state["summary"])
+    copy_button("요약 복사", st.session_state["summary"], key="copy_summary")
 else:
     st.info("아직 생성하지 않았습니다.")
 
 # ========================
-# 최종 치료계획
+# AI 제안 (고정)
 # ========================
-st.subheader("🩺 최종 치료계획 (의료진 확정)")
+st.subheader("🤖 AI 제안")
+if "ai_plan" in st.session_state:
+    st.write(st.session_state["ai_plan"])
+    copy_button("AI 제안 복사", st.session_state["ai_plan"], key="copy_plan")
+else:
+    st.info("아직 생성하지 않았습니다.")
 
+# ========================
+# 최종 치료계획 (항상 보이게 고정)
+# ========================
+st.subheader("③ 최종 치료계획 (의료진 확정)")
 cls = st.selectbox("질환 분류", ["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"])
 period = st.selectbox("치료 기간", ["1주","2주","3주","4주","1개월 이상"])
 
@@ -121,13 +132,13 @@ cov = st.multiselect("치료 항목(급여)", ["전침","통증침","체질침",
 unc = st.multiselect("치료 항목(비급여)", ["약침","약침패치","테이핑요법","비급여 맞춤 한약"])
 herb = st.radio("맞춤 한약 기간", ["선택 안 함","1개월","2개월","3개월"], index=0)
 
-if st.button("③ 최종 결과 생성"):
+if st.button("최종 결과 생성"):
     final_text = f"""
 === 환자 문진 요약 ===
-{summary if submitted else "(요약 없음)"}
+{st.session_state.get("summary","(요약 없음)")}
 
 === Gemini 제안 ===
-{ai_plan if submitted else "(AI 제안 없음)"}
+{st.session_state.get("ai_plan","(AI 제안 없음)")}
 
 === 최종 치료계획 (의료진 확정) ===
 - 분류: {cls}

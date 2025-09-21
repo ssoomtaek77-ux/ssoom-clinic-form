@@ -23,13 +23,6 @@ def call_ai(prompt: str) -> str:
     except Exception as e:
         return f"❌ 오류: {e}"
 
-# 복사 기능 개선 (출력 고정 + 버튼 따로)
-def copy_block(label, text, key):
-    st.code(text, language="markdown")
-    if st.button(label, key=key):
-        st.session_state[key] = text
-        st.toast(f"{label} 복사 준비 완료! (브라우저에서 직접 복사하세요)")
-
 # ========================
 # UI
 # ========================
@@ -73,7 +66,10 @@ if submitted:
 
     st.subheader("문진 요약")
     summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
-    copy_block("📋 요약 복사", summary, key="copy_sum")
+    st.code(summary, language="markdown")
+    if st.button("📋 요약 복사"):
+        st.session_state["summary"] = summary
+        st.toast("요약 복사 준비 완료! (브라우저에서 직접 복사하세요)")
 
     st.subheader("AI 제안")
     plan_prompt = f"""
@@ -104,7 +100,10 @@ JSON 예시:
 {patient_data}
 """
     ai_plan = call_ai(plan_prompt)
-    copy_block("📋 제안 복사", ai_plan, key="copy_plan")
+    st.code(ai_plan, language="markdown")
+    if st.button("📋 제안 복사"):
+        st.session_state["ai_plan"] = ai_plan
+        st.toast("AI 제안 복사 준비 완료! (브라우저에서 직접 복사하세요)")
 
     st.session_state["summary"] = summary
     st.session_state["ai_plan"] = ai_plan
@@ -138,4 +137,6 @@ if st.button("최종 결과 생성"):
 - 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
 """
     st.text_area("최종 출력", final_text, height=300)
-    copy_block("📋 최종 복사", final_text, key="copy_final")
+    if st.button("📋 최종 복사"):
+        st.session_state["final"] = final_text
+        st.toast("최종 결과 복사 준비 완료! (브라우저에서 직접 복사하세요)")

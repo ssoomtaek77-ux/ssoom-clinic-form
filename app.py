@@ -6,7 +6,7 @@ import os
 # 환경 변수에서 API 키 불러오기
 # (Streamlit Cloud → Settings → Secrets → GEMINI_API_KEY 설정)
 # -----------------------------
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL = "gemini-pro"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
 
@@ -150,3 +150,4 @@ if st.button("③ 최종 치료계획 생성"):
     """
     st.subheader("✅ 최종 치료계획")
     st.code(final_text, language="markdown")
+

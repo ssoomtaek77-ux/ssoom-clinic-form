@@ -102,6 +102,7 @@ JSON 예시:
 [환자 문진]
 {patient_data}
 """
+
     ai_plan = call_ai(plan_prompt)
     copy_button("📋 제안 복사", ai_plan, key="copy_plan")
 
@@ -138,4 +139,5 @@ if st.button("최종 결과 생성"):
 """
     st.text_area("최종 출력", final_text, height=300)
     copy_button("📋 최종 복사", final_text, key="copy_final")
+
 

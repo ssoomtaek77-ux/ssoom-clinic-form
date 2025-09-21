@@ -12,7 +12,7 @@ if not API_KEY:
     st.stop()
 genai.configure(api_key=API_KEY)
 
-MODEL = "gemini-1.5-pro"
+MODEL = "gemini-1.5-flash"
 
 # ========================
 # 유틸 함수
@@ -132,3 +132,4 @@ if st.button("최종 결과 생성"):
 - 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
 """
     st.text_area("최종 출력", final_text, height=300)
+

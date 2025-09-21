@@ -75,15 +75,31 @@ if submitted:
     copy_button("📋 요약 복사", summary, key="copy_sum")
 
     st.subheader("AI 제안")
-    plan_prompt = f"""
+   plan_prompt = f"""
 너는 한의원 상담 보조 도우미다.
-환자 문진을 보고:
-1) 급성/만성/웰니스 분류
-2) 권장 치료기간
-3) 권장 급여/비급여 항목 (반드시 내가 준 카테고리 안에서 먼저 추천 후, 추가 제안은 따로 '추가 추천' 항목으로 작성)
-4) 복용 중 약물이 있다면 병용 시 주의사항
+환자 문진을 보고 JSON만 출력하라.
 
-문진 내용:
+⚠️ 규칙:
+1. covered와 uncovered에는 반드시 아래 리스트 중에서만 선택:
+   covered = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
+   uncovered = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
+2. covered/uncovered에 없는 건 절대 넣지 말 것.
+3. 만약 다른 치료 아이디어가 있다면 반드시 extra_suggestions 배열에만 넣을 것.
+4. caution 필드는 환자의 병력/복용약을 바탕으로 절대 빈칸 없이 작성.
+
+JSON 예시:
+{
+  "classification": "만성",
+  "duration": "4주",
+  "covered": ["전침","체질침"],
+  "uncovered": ["약침"],
+  "extra_suggestions": ["운동치료 병행", "식이조절 지도"],
+  "rationale": "증상 기간 및 병력 고려",
+  "objective_comment": "수면·스트레스 관리 권장",
+  "caution": "아토피약 복용 시 졸림/피부자극 주의"
+}
+
+[환자 문진]
 {patient_data}
 """
     ai_plan = call_ai(plan_prompt)
@@ -122,3 +138,4 @@ if st.button("최종 결과 생성"):
 """
     st.text_area("최종 출력", final_text, height=300)
     copy_button("📋 최종 복사", final_text, key="copy_final")
+

@@ -1,6 +1,5 @@
 import streamlit as st
 import google.generativeai as genai
-import json
 
 # ========================
 # 기본 설정
@@ -103,21 +102,11 @@ JSON 예시:
 [환자 문진]
 {patient_data}
 """
-    raw = call_ai(plan_prompt)
-
-    # JSON 파싱
-    try:
-        parsed = json.loads(raw)
-        ai_plan_display = json.dumps(parsed, ensure_ascii=False, indent=2)
-    except:
-        parsed = {}
-        ai_plan_display = raw or "AI 응답 없음"
-
-    st.code(ai_plan_display, language="json")
-    copy_button("📋 제안 복사", ai_plan_display, key="copy_plan")
+    ai_plan = call_ai(plan_prompt)
+    copy_button("📋 제안 복사", ai_plan, key="copy_plan")
 
     st.session_state["summary"] = summary
-    st.session_state["ai_plan"] = ai_plan_display
+    st.session_state["ai_plan"] = ai_plan
 
 # ------------------- 치료계획 (항상 보이도록 고정) -------------------
 st.subheader("최종 치료계획 (의료진 확정)")
@@ -137,7 +126,7 @@ if st.button("최종 결과 생성"):
 === 환자 문진 요약 ===
 {summary}
 
-=== Gemini 제안(JSON) ===
+=== Gemini 제안 ===
 {ai_plan}
 
 === 최종 치료계획 (의료진 확정) ===

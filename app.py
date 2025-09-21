@@ -24,10 +24,11 @@ def call_ai(prompt: str) -> str:
         return f"❌ 오류: {e}"
 
 def copy_button(label, text, key):
+    # 출력 고정
     st.code(text, language="markdown")
     if st.button(label, key=key):
         st.session_state[key] = text
-        st.toast("복사 준비 완료! (브라우저에서 직접 복사하세요)")  # ✅ 사라지지 않게 유지
+        st.toast("복사 준비 완료! (브라우저에서 직접 복사하세요)")
 
 # ========================
 # UI
@@ -84,7 +85,8 @@ if submitted:
    covered = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
    uncovered = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
 2. covered/uncovered에 없는 건 절대 넣지 말 것.
-3. 만약 다른 치료 아이디어가 있다면 반드시 extra_suggestions 배열에만 넣을 것.
+3. 다른 치료 아이디어가 있으면 반드시 최소 1개 이상 extra_suggestions 배열에 넣을 것.
+   (예: 생활습관 관리, 운동치료, 식이조절, 수면위생 교육 등)
 4. caution 필드는 환자의 병력/복용약을 바탕으로 절대 빈칸 없이 작성.
 5. 모든 출력은 반드시 한국어로 작성하라. 단, JSON의 키 이름(classification, duration 등)은 영어로 유지한다.
 
@@ -106,6 +108,7 @@ JSON 예시:
     ai_plan = call_ai(plan_prompt)
     copy_button("📋 제안 복사", ai_plan, key="copy_plan")
 
+    # 세션에 저장
     st.session_state["summary"] = summary
     st.session_state["ai_plan"] = ai_plan
 

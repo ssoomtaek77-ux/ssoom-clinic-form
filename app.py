@@ -1,143 +1,127 @@
 import streamlit as st
 import google.generativeai as genai
+import json
 
-# ========================
-# 기본 설정
-# ========================
-st.set_page_config(page_title="일반 질환 기초 문진표 · 숨쉬는한의원", page_icon="☁️", layout="wide")
-
-# 🔑 API 키 (Streamlit Secrets)
+# 🔑 API Key 불러오기 (Streamlit Secrets)
 API_KEY = st.secrets["GOOGLE_API_KEY"]
 genai.configure(api_key=API_KEY)
 
-TEXT_MODEL = "gemini-1.5-flash"
+# -------------------------------
+# 세션 상태 초기화
+# -------------------------------
+if "summary" not in st.session_state:
+    st.session_state.summary = ""
+if "ai_plan" not in st.session_state:
+    st.session_state.ai_plan = ""
+if "final_plan" not in st.session_state:
+    st.session_state.final_plan = ""
 
-# ========================
-# 유틸 함수
-# ========================
-def call_ai(prompt: str) -> str:
-    try:
-        model = genai.GenerativeModel(TEXT_MODEL)
-        res = model.generate_content(prompt)
-        return res.text
-    except Exception as e:
-        return f"❌ 오류: {e}"
+# -------------------------------
+# 제목
+# -------------------------------
+st.title("🩺 일반 질환 기초 문진표 · 숨쉬는한의원")
 
-def copy_button(label, text, key):
-    st.code(text, language="markdown")
-    if st.button(label, key=key):
-        st.session_state[key] = text
-        st.success("복사 준비 완료! (브라우저에서 직접 복사하세요)")
+# -------------------------------
+# 입력창
+# -------------------------------
+st.subheader("📋 문진 입력")
+patient_data = st.text_area("환자 문진 내용을 입력하세요", height=150)
 
-# ========================
-# UI
-# ========================
-st.title("일반 질환 기초 문진표")
+# -------------------------------
+# 문진 요약 생성
+# -------------------------------
+if st.button("① 요약 생성"):
+    if not patient_data.strip():
+        st.warning("환자 문진 내용을 입력해주세요.")
+    else:
+        try:
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            prompt = f"""
+            아래 환자 문진 내용을 간단히 요약해줘.
 
-# ------------------- 환자 문진 -------------------
-with st.form("patient_form"):
-    st.subheader("환자 기본정보")
-    name = st.text_input("이름")
-    age = st.number_input("나이", 0, 120, 30)
-    bp = st.text_input("혈압/맥박")
+            [문진 내용]
+            {patient_data}
+            """
+            response = model.generate_content(prompt)
+            st.session_state.summary = response.text
+        except Exception as e:
+            st.error(f"요약 생성 중 오류 발생: {e}")
 
-    st.subheader("현재 불편한 증상")
-    symptoms = st.multiselect(
-        "증상 선택",
-        ["머리","허리","어깨","무릎","손목","두통/어지러움","불면","알레르기","기타"],
-    )
-    symptom_etc = st.text_input("기타 증상")
+# -------------------------------
+# 문진 요약 출력 + 복사 버튼
+# -------------------------------
+with st.container():
+    st.markdown("### 📌 문진 요약")
+    if st.session_state.summary:
+        st.text_area("요약 결과", value=st.session_state.summary, height=150, key="summary_box")
+        st.button("📋 요약 복사", on_click=lambda: st.session_state.update(copy_sum=st.session_state.summary))
+    else:
+        st.info("아직 생성하지 않았습니다.")
 
-    onset = st.selectbox("증상 시작 시점", ["일주일 이내","1주~1개월","1개월~3개월","3개월 이상"])
-    causes = st.multiselect("증상 원인", ["사고","음식","스트레스","원인모름","기존질환","생활습관"])
-    disease = st.text_input("기존질환 (선택)")
-    lifestyle = st.text_input("생활습관/환경 (선택)")
+# -------------------------------
+# AI 제안 생성
+# -------------------------------
+if st.button("② AI 제안 생성"):
+    if not st.session_state.summary:
+        st.warning("먼저 문진 요약을 생성하세요.")
+    else:
+        try:
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
-    history = st.text_area("과거 병력/복용 중인 약물/치료")
-    visit = st.selectbox("내원 빈도", ["매일 통원","주 3~6회","주 1~2회","기타"])
+            plan_prompt = f"""
+            너는 한의원 상담 보조 도우미다.
+            환자 요약을 기반으로 JSON 형태의 치료 계획 제안을 만들어라.
 
-    submitted = st.form_submit_button("① 문진 요약 생성")
+            ⚠️ 규칙:
+            1. covered(급여 항목)과 uncovered(비급여 항목)는 반드시 아래 리스트 중에서만 선택:
+               covered = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
+               uncovered = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
+            2. covered/uncovered에 없는 치료법은 절대 넣지 마라.
+            3. 만약 다른 추가 치료 아이디어가 있다면 반드시 extra_suggestions 배열에만 넣어라.
+            4. rationale(근거), objective_comment(객관적 코멘트), caution(주의사항)은 반드시 채워라.
 
-# ------------------- 요약 및 AI 제안 -------------------
-if submitted:
-    patient_data = f"""
-이름: {name}, 나이: {age}
-혈압/맥박: {bp}
-증상: {", ".join(symptoms+[symptom_etc] if symptom_etc else symptoms)}
-시작: {onset}
-원인: {", ".join(causes)} {disease} {lifestyle}
-과거/약물: {history}
-내원: {visit}
-"""
+            JSON 예시:
+            {{
+              "classification": "만성",
+              "duration": "4주",
+              "covered": ["전침","체질침"],
+              "uncovered": ["약침"],
+              "extra_suggestions": ["운동치료 병행", "식이조절 지도"],
+              "rationale": "증상 기간 및 병력 고려",
+              "objective_comment": "수면·스트레스 관리 권장",
+              "caution": "혈압약 복용 중으로 어지럼증 주의"
+            }}
 
-    st.subheader("문진 요약")
-    summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
-    copy_button("📋 요약 복사", summary, key="copy_sum")
+            [환자 요약]
+            {st.session_state.summary}
+            """
 
-    st.subheader("AI 제안")
-   plan_prompt = f"""
-너는 한의원 상담 보조 도우미다.
-환자 문진을 보고 JSON만 출력하라.
+            response = model.generate_content(plan_prompt)
+            st.session_state.ai_plan = response.text
 
-⚠️ 규칙:
-1. covered와 uncovered에는 반드시 아래 리스트 중에서만 선택:
-   covered = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
-   uncovered = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
-2. covered/uncovered에 없는 건 절대 넣지 말 것.
-3. 만약 다른 치료 아이디어가 있다면 반드시 extra_suggestions 배열에만 넣을 것.
-4. caution 필드는 환자의 병력/복용약을 바탕으로 절대 빈칸 없이 작성.
+        except Exception as e:
+            st.error(f"AI 제안 생성 중 오류 발생: {e}")
 
-JSON 예시:
-{
-  "classification": "만성",
-  "duration": "4주",
-  "covered": ["전침","체질침"],
-  "uncovered": ["약침"],
-  "extra_suggestions": ["운동치료 병행", "식이조절 지도"],
-  "rationale": "증상 기간 및 병력 고려",
-  "objective_comment": "수면·스트레스 관리 권장",
-  "caution": "아토피약 복용 시 졸림/피부자극 주의"
-}
+# -------------------------------
+# AI 제안 출력 + 복사 버튼
+# -------------------------------
+with st.container():
+    st.markdown("### 🤖 AI 제안 (분류/치료/기간/주의사항)")
+    if st.session_state.ai_plan:
+        st.text_area("AI 제안 결과", value=st.session_state.ai_plan, height=250, key="ai_plan_box")
+        st.button("📋 제안 복사", on_click=lambda: st.session_state.update(copy_ai=st.session_state.ai_plan))
+    else:
+        st.info("아직 제안 없음")
 
-[환자 문진]
-{patient_data}
-"""
+# -------------------------------
+# 최종 치료계획 (수정 가능)
+# -------------------------------
+st.markdown("### 🩺 최종 치료계획 (의료진 확정)")
+st.session_state.final_plan = st.text_area(
+    "최종 치료계획을 입력하세요",
+    value=st.session_state.final_plan,
+    height=200,
+    key="final_plan_box"
+)
 
-    ai_plan = call_ai(plan_prompt)
-    copy_button("📋 제안 복사", ai_plan, key="copy_plan")
-
-    st.session_state["summary"] = summary
-    st.session_state["ai_plan"] = ai_plan
-
-# ------------------- 치료계획 (항상 보이도록 고정) -------------------
-st.subheader("최종 치료계획 (의료진 확정)")
-
-cls = st.selectbox("질환 분류", ["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"])
-period = st.selectbox("치료 기간", ["1주","2주","3주","4주","1개월 이상"])
-
-cov = st.multiselect("치료 항목(급여)", ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"])
-unc = st.multiselect("치료 항목(비급여)", ["약침","약침패치","테이핑요법","비급여 맞춤 한약"])
-herb = st.radio("맞춤 한약 기간", ["선택 안 함","1개월","2개월","3개월"], index=0)
-
-if st.button("최종 결과 생성"):
-    summary = st.session_state.get("summary", "아직 생성되지 않음")
-    ai_plan = st.session_state.get("ai_plan", "아직 제안 없음")
-
-    final_text = f"""
-=== 환자 문진 요약 ===
-{summary}
-
-=== Gemini 제안 ===
-{ai_plan}
-
-=== 최종 치료계획 (의료진 확정) ===
-- 분류: {cls}
-- 기간: {period}
-- 급여: {", ".join(cov) if cov else "-"}
-- 비급여: {", ".join(unc) if unc else "-"}
-- 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
-"""
-    st.text_area("최종 출력", final_text, height=300)
-    copy_button("📋 최종 복사", final_text, key="copy_final")
-
-
+st.button("📋 최종 계획 복사", on_click=lambda: st.session_state.update(copy_final=st.session_state.final_plan))

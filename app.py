@@ -23,12 +23,12 @@ def call_ai(prompt: str) -> str:
     except Exception as e:
         return f"❌ 오류: {e}"
 
-def copy_button(label, text, key):
-    # 출력 고정
+# 복사 기능 개선 (출력 고정 + 버튼 따로)
+def copy_block(label, text, key):
     st.code(text, language="markdown")
     if st.button(label, key=key):
         st.session_state[key] = text
-        st.toast("복사 준비 완료! (브라우저에서 직접 복사하세요)")
+        st.toast(f"{label} 복사 준비 완료! (브라우저에서 직접 복사하세요)")
 
 # ========================
 # UI
@@ -72,8 +72,8 @@ if submitted:
 """
 
     st.subheader("문진 요약")
-    summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 한국어로 요약:\n{patient_data}")
-    copy_button("📋 요약 복사", summary, key="copy_sum")
+    summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
+    copy_block("📋 요약 복사", summary, key="copy_sum")
 
     st.subheader("AI 제안")
     plan_prompt = f"""
@@ -85,10 +85,8 @@ if submitted:
    covered = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
    uncovered = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
 2. covered/uncovered에 없는 건 절대 넣지 말 것.
-3. 다른 치료 아이디어가 있으면 반드시 최소 1개 이상 extra_suggestions 배열에 넣을 것.
-   (예: 생활습관 관리, 운동치료, 식이조절, 수면위생 교육 등)
+3. 만약 다른 치료 아이디어가 있다면 반드시 extra_suggestions 배열에만 넣을 것.
 4. caution 필드는 환자의 병력/복용약을 바탕으로 절대 빈칸 없이 작성.
-5. 모든 출력은 반드시 한국어로 작성하라. 단, JSON의 키 이름(classification, duration 등)은 영어로 유지한다.
 
 JSON 예시:
 {{
@@ -106,9 +104,8 @@ JSON 예시:
 {patient_data}
 """
     ai_plan = call_ai(plan_prompt)
-    copy_button("📋 제안 복사", ai_plan, key="copy_plan")
+    copy_block("📋 제안 복사", ai_plan, key="copy_plan")
 
-    # 세션에 저장
     st.session_state["summary"] = summary
     st.session_state["ai_plan"] = ai_plan
 
@@ -141,4 +138,4 @@ if st.button("최종 결과 생성"):
 - 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
 """
     st.text_area("최종 출력", final_text, height=300)
-    copy_button("📋 최종 복사", final_text, key="copy_final")
+    copy_block("📋 최종 복사", final_text, key="copy_final")

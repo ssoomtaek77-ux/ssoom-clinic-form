@@ -30,60 +30,38 @@ st.title("일반 질환 기초 문진표")
 # ------------------- 환자 문진 -------------------
 with st.form("patient_form"):
     st.subheader("환자 기본정보")
-    name = st.text_input("이름", value=st.session_state.get("name", ""))
-    age = st.number_input("나이", 0, 120, st.session_state.get("age", 30))
-    bp = st.text_input("혈압/맥박", value=st.session_state.get("bp", ""))
+    st.text_input("이름", key="name")
+    st.number_input("나이", 0, 120, 30, key="age")
+    st.text_input("혈압/맥박", key="bp")
 
     st.subheader("현재 불편한 증상")
-    symptoms = st.multiselect(
+    st.multiselect(
         "증상 선택",
         ["머리","허리","어깨","무릎","손목","두통/어지러움","불면","알레르기","기타"],
-        default=st.session_state.get("symptoms", []),
+        key="symptoms"
     )
-    symptom_etc = st.text_input("기타 증상", value=st.session_state.get("symptom_etc", ""))
+    st.text_input("기타 증상", key="symptom_etc")
 
-    onset = st.selectbox("증상 시작 시점",
-        ["일주일 이내","1주~1개월","1개월~3개월","3개월 이상"],
-        index=["일주일 이내","1주~1개월","1개월~3개월","3개월 이상"].index(st.session_state.get("onset", "일주일 이내"))
-    )
-    causes = st.multiselect("증상 원인",
-        ["사고","음식","스트레스","원인모름","기존질환","생활습관"],
-        default=st.session_state.get("causes", [])
-    )
-    disease = st.text_input("기존질환 (선택)", value=st.session_state.get("disease", ""))
-    lifestyle = st.text_input("생활습관/환경 (선택)", value=st.session_state.get("lifestyle", ""))
+    st.selectbox("증상 시작 시점", ["일주일 이내","1주~1개월","1개월~3개월","3개월 이상"], key="onset")
+    st.multiselect("증상 원인", ["사고","음식","스트레스","원인모름","기존질환","생활습관"], key="causes")
+    st.text_input("기존질환 (선택)", key="disease")
+    st.text_input("생활습관/환경 (선택)", key="lifestyle")
 
-    history = st.text_area("과거 병력/복용 중인 약물/치료", value=st.session_state.get("history", ""))
-    visit = st.selectbox("내원 빈도",
-        ["매일 통원","주 3~6회","주 1~2회","기타"],
-        index=["매일 통원","주 3~6회","주 1~2회","기타"].index(st.session_state.get("visit", "매일 통원"))
-    )
+    st.text_area("과거 병력/복용 중인 약물/치료", key="history")
+    st.selectbox("내원 빈도", ["매일 통원","주 3~6회","주 1~2회","기타"], key="visit")
 
     submitted = st.form_submit_button("① 문진 요약 생성")
 
 # ------------------- 요약 및 AI 제안 -------------------
 if submitted:
-    # 입력값 세션에 저장
-    st.session_state["name"] = name
-    st.session_state["age"] = age
-    st.session_state["bp"] = bp
-    st.session_state["symptoms"] = symptoms
-    st.session_state["symptom_etc"] = symptom_etc
-    st.session_state["onset"] = onset
-    st.session_state["causes"] = causes
-    st.session_state["disease"] = disease
-    st.session_state["lifestyle"] = lifestyle
-    st.session_state["history"] = history
-    st.session_state["visit"] = visit
-
     patient_data = f"""
-이름: {name}, 나이: {age}
-혈압/맥박: {bp}
-증상: {", ".join(symptoms+[symptom_etc] if symptom_etc else symptoms)}
-시작: {onset}
-원인: {", ".join(causes)} {disease} {lifestyle}
-과거/약물: {history}
-내원: {visit}
+이름: {st.session_state['name']}, 나이: {st.session_state['age']}
+혈압/맥박: {st.session_state['bp']}
+증상: {", ".join(st.session_state['symptoms']+[st.session_state['symptom_etc']] if st.session_state['symptom_etc'] else st.session_state['symptoms'])}
+시작: {st.session_state['onset']}
+원인: {", ".join(st.session_state['causes'])} {st.session_state['disease']} {st.session_state['lifestyle']}
+과거/약물: {st.session_state['history']}
+내원: {st.session_state['visit']}
 """
 
     st.subheader("문진 요약")
@@ -111,38 +89,30 @@ if submitted:
     st.session_state["ai_plan"] = ai_plan
     st.code(ai_plan, language="markdown")
 
-# ------------------- 치료계획 (항상 보이도록 고정) -------------------
+# ------------------- 치료계획 (항상 고정) -------------------
 st.subheader("최종 치료계획 (의료진 확정)")
 
-cls = st.selectbox("질환 분류",
+st.selectbox("질환 분류",
     ["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"],
-    index=["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"].index(st.session_state.get("cls","급성질환(10~14일)"))
+    key="cls"
 )
-st.session_state["cls"] = cls
-
-period = st.selectbox("치료 기간",
+st.selectbox("치료 기간",
     ["1주","2주","3주","4주","1개월 이상"],
-    index=["1주","2주","3주","4주","1개월 이상"].index(st.session_state.get("period","1주"))
+    key="period"
 )
-st.session_state["period"] = period
 
-cov = st.multiselect("치료 항목(급여)",
+st.multiselect("치료 항목(급여)",
     ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"],
-    default=st.session_state.get("cov", [])
+    key="cov"
 )
-st.session_state["cov"] = cov
-
-unc = st.multiselect("치료 항목(비급여)",
+st.multiselect("치료 항목(비급여)",
     ["약침","약침패치","테이핑요법","비급여 맞춤 한약"],
-    default=st.session_state.get("unc", [])
+    key="unc"
 )
-st.session_state["unc"] = unc
-
-herb = st.radio("맞춤 한약 기간",
+st.radio("맞춤 한약 기간",
     ["선택 안 함","1개월","2개월","3개월"],
-    index=["선택 안 함","1개월","2개월","3개월"].index(st.session_state.get("herb","선택 안 함"))
+    key="herb"
 )
-st.session_state["herb"] = herb
 
 if st.button("최종 결과 생성"):
     summary = st.session_state.get("summary", "아직 생성되지 않음")
@@ -156,10 +126,10 @@ if st.button("최종 결과 생성"):
 {ai_plan}
 
 === 최종 치료계획 (의료진 확정) ===
-- 분류: {cls}
-- 기간: {period}
-- 급여: {", ".join(cov) if cov else "-"}
-- 비급여: {", ".join(unc) if unc else "-"}
-- 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
+- 분류: {st.session_state['cls']}
+- 기간: {st.session_state['period']}
+- 급여: {", ".join(st.session_state['cov']) if st.session_state['cov'] else "-"}
+- 비급여: {", ".join(st.session_state['unc']) if st.session_state['unc'] else "-"}
+- 맞춤 한약: {st.session_state['herb'] if st.session_state['herb']!="선택 안 함" else "-"}
 """
     st.text_area("최종 출력", final_text, height=300)

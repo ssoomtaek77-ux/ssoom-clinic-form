@@ -27,7 +27,7 @@ def copy_button(label, text, key):
     st.code(text, language="markdown")
     if st.button(label, key=key):
         st.session_state[key] = text
-        st.success("복사 준비 완료! (브라우저에서 직접 복사하세요)")
+        st.toast("복사 준비 완료! (브라우저에서 직접 복사하세요)")  # ✅ 사라지지 않게 유지
 
 # ========================
 # UI
@@ -71,7 +71,7 @@ if submitted:
 """
 
     st.subheader("문진 요약")
-    summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
+    summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 한국어로 요약:\n{patient_data}")
     copy_button("📋 요약 복사", summary, key="copy_sum")
 
     st.subheader("AI 제안")
@@ -86,6 +86,7 @@ if submitted:
 2. covered/uncovered에 없는 건 절대 넣지 말 것.
 3. 만약 다른 치료 아이디어가 있다면 반드시 extra_suggestions 배열에만 넣을 것.
 4. caution 필드는 환자의 병력/복용약을 바탕으로 절대 빈칸 없이 작성.
+5. 모든 출력은 반드시 한국어로 작성하라. 단, JSON의 키 이름(classification, duration 등)은 영어로 유지한다.
 
 JSON 예시:
 {{

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>일반 질환 기초 문진표 · 숨쉬는한의원</title>
+<title>일반 질환 기초 문진표 - 숨쉬는한의원</title>
 <style>
   :root { --bg:#f7f9fb; --card:#ffffff; --txt:#1f2937; --muted:#6b7280; --pri:#2563eb; --priH:#1d4ed8; --line:#e5e7eb; }
   * { box-sizing: border-box; }
@@ -303,3 +303,4 @@ document.getElementById("btnCompose").addEventListener("click", ()=>{
   lines.push("=== AI 제안(참고) ===");
   if (lastAI){
    
+

@@ -5,21 +5,22 @@ import streamlit as st
 
 # ================================
 # 환경변수: GOOGLE_API_KEY 우선 사용
-# (있으면 사용, 없으면 GEMINI_API_KEY 폴백)
 # ================================
-API_KEY = os.getenv("GOOGLE_API_KEY")
-MODEL_NAME = "gemini-pro"  # 구글 모델 ID (문자열 그대로 사용)
+API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+MODEL_NAME = "gemini-1.5-pro"  # 🔑 올바른 모델 이름
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
 
 st.set_page_config(page_title="숨쉬는한의원 문진 · 치료계획", layout="wide")
 st.title("🩺 숨쉬는한의원 문진 · 치료계획")
 st.caption("※ 본 출력은 참고용이며, 진단·처방이 아닙니다. 최종 결정은 의료진의 판단에 따릅니다.")
 
-# 디버그 스위치 (필요할 때만 켜세요)
+# 사이드바 디버그
 show_debug = st.sidebar.toggle("디버그 표시", value=False)
 
+# -----------------------------
+# API 호출 함수
+# -----------------------------
 def call_google_gl_api(prompt: str):
-    """Google Generative Language API 호출 (서버사이드)"""
     if not API_KEY:
         return {"error": "API_KEY_NOT_SET", "message": "환경변수 GOOGLE_API_KEY 또는 GEMINI_API_KEY가 설정되지 않았습니다."}
 
@@ -29,7 +30,6 @@ def call_google_gl_api(prompt: str):
         if resp.status_code != 200:
             return {"error": "HTTP_ERROR", "status": resp.status_code, "body": resp.text}
         data = resp.json()
-        # 표준 텍스트 위치
         text = (
             data.get("candidates", [{}])[0]
                 .get("content", {})
@@ -41,7 +41,6 @@ def call_google_gl_api(prompt: str):
         return {"error": "REQUEST_EXCEPTION", "message": str(e)}
 
 def safe_json_from_text(text: str):
-    """응답 안에서 JSON 객체만 뽑아 파싱 (관대한 파서)"""
     if not text:
         return None
     import re
@@ -136,16 +135,13 @@ with colB:
 너는 내부 상담 보조 도구다. 아래 환자 문진을 바탕으로 JSON만 출력하라(텍스트 금지).
 
 필수 필드:
-- classification: "급성"|"만성"|"웰니스" (빈칸 금지)
-- duration: "1주"|"2주"|"3주"|"4주"|"1개월 이상" (빈칸 금지)
+- classification: "급성"|"만성"|"웰니스"
+- duration: "1주"|"2주"|"3주"|"4주"|"1개월 이상"
 - covered: ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"] 중 일부
 - uncovered: ["약침","약침패치","테이핑요법","비급여 맞춤 한약"] 중 일부
-- rationale: 근거(짧게)
+- rationale: 근거
 - objective_comment: 생활습관/재발예방 등 객관 코멘트
-- caution: 환자 병력/복용약 기반 병행 주의사항.
-  규칙) 1) 정보가 모호해도 반드시 채워라(빈칸 금지).
-       2) 예: '아토피약'만 적혀 있으면 '아토피 치료제(추정: 항히스타민제/스테로이드제)'처럼 추정하고 한약/치료 병행 주의점 제시.
-       3) 병력/약물 언급이 전혀 없을 때만 '특이사항 없음'이라고 작성.
+- caution: 병력/복용약 기반 주의사항 (정보 모호해도 반드시 작성)
 
 [환자 문진(JSON)]
 {json.dumps(patient, ensure_ascii=False, indent=2)}
@@ -185,10 +181,6 @@ herb = st.radio("비급여 맞춤 한약 기간", ["선택 안 함","1개월","2
 
 if st.button("③ 최종 결과 생성 (AI 제안 포함)"):
     ai = st.session_state.get("last_ai")
-    # caution 보강: 아토피 키워드 자동 안내
-    extra_caution = ""
-    if "아토피" in (patient.get("history") or ""):
-        extra_caution = "\n(자동 안내) 아토피 관련 약물 병용 가능성 → 항히스타민제/스테로이드 계열과 병행 시 졸림·피로 등 확인 필요."
 
     lines = []
     lines.append("=== AI 제안(참고) ===")
@@ -199,16 +191,15 @@ if st.button("③ 최종 결과 생성 (AI 제안 포함)"):
         lines.append(f"- 비급여 후보: {', '.join(ai.get('uncovered') or []) or '-'}")
         lines.append(f"근거: {ai.get('rationale','-')}")
         lines.append(f"📝 객관적 참고: {ai.get('objective_comment','-')}")
-        caution = (ai.get("caution") or "").strip() or "특이사항 없음 (출력 누락)"
-        caution += extra_caution
+        caution = (ai.get("caution") or "").strip() or "특이사항 없음"
         lines.append(f"⚠️ 주의사항: {caution}")
     else:
         lines.append("(AI 제안 없음)")
     lines.append("")
 
     lines.append("=== 최종 치료계획 (의료진 확정) ===")
-    lines.append(f"- 분류: {cls}{' (AI: '+ai.get('classification')+')' if ai else ''}")
-    lines.append(f"- 기간: {period}{' (AI: '+ai.get('duration')+')' if ai else ''}")
+    lines.append(f"- 분류: {cls}")
+    lines.append(f"- 기간: {period}")
     cov_line = ", ".join(cov) if cov else "-"
     unc_line = ", ".join(unc) if unc else "-"
     if herb != "선택 안 함":
@@ -216,10 +207,6 @@ if st.button("③ 최종 결과 생성 (AI 제안 포함)"):
             unc_line = unc_line.replace("비급여 맞춤 한약", f"비급여 맞춤 한약({herb})")
         else:
             unc_line = f"{unc_line}{'' if unc_line=='-' else ', ' }비급여 맞춤 한약({herb})"
-    if ai and ai.get("covered"):
-        cov_line += f"{'' if cov_line=='-' else ' '} (AI 후보: {', '.join(ai.get('covered'))})"
-    if ai and ai.get("uncovered"):
-        unc_line += f"{'' if unc_line=='-' else ' '} (AI 후보: {', '.join(ai.get('uncovered'))})"
     lines.append(f"- 급여: {cov_line}")
     lines.append(f"- 비급여: {unc_line}")
     lines.append("")
@@ -227,4 +214,3 @@ if st.button("③ 최종 결과 생성 (AI 제안 포함)"):
 
     st.subheader("✅ 출력")
     st.code("\n".join(lines), language="text")
-

@@ -7,7 +7,7 @@ import streamlit as st
 # 환경변수: GOOGLE_API_KEY 우선 사용
 # (있으면 사용, 없으면 GEMINI_API_KEY 폴백)
 # ================================
-API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GOOGLE_API_KEY")
 MODEL_NAME = "gemini-pro"  # 구글 모델 ID (문자열 그대로 사용)
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={API_KEY}"
 
@@ -227,3 +227,4 @@ if st.button("③ 최종 결과 생성 (AI 제안 포함)"):
 
     st.subheader("✅ 출력")
     st.code("\n".join(lines), language="text")
+

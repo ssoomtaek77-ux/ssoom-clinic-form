@@ -1,241 +1,305 @@
-import streamlit as st
-import google.generativeai as genai
-import json
-from typing import Optional
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>일반 질환 기초 문진표 · 숨쉬는한의원</title>
+<style>
+  :root { --bg:#f7f9fb; --card:#ffffff; --txt:#1f2937; --muted:#6b7280; --pri:#2563eb; --priH:#1d4ed8; --line:#e5e7eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Apple SD Gothic Neo, sans-serif; }
+  .wrap { max-width: 980px; margin: 32px auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .desc { color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.04); padding: 18px; margin: 18px 0; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label { font-weight: 600; font-size: 14px; margin: 10px 0 6px; display:block; }
+  input[type="text"], input[type="number"], textarea, select {
+    width: 100%; padding: 10px 12px; border:1px solid var(--line); border-radius: 10px; background: #fff; font-size: 14px; color:#000;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  .checklist { display:flex; flex-wrap: wrap; gap:8px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); padding:8px 10px; border-radius:999px; background:#fff; font-size:13px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; padding:12px 16px; background:var(--pri); color:#fff; border-radius: 10px; cursor:pointer; font-weight:600; }
+  .btn:hover { background: var(--priH); }
+  .result { white-space: pre-wrap; background:#fff; color:#111; border:1px solid #e5e7eb; border-radius: 12px; padding: 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width: 860px){ .grid, .two{ grid-template-columns: 1fr; } }
+  .hr { height:1px; background:var(--line); margin:14px 0; }
+  .muted { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>일반 질환 기초 문진표</h1>
+    <div class="desc">작성하신 문진 내용은 진료 목적 외에는 사용되지 않으며, 개인정보 보호법에 따라 안전하게 관리됩니다.</div>
 
-# ========================
-# 페이지 / 키 설정
-# ========================
-st.set_page_config(page_title="일반 질환 기초 문진표", page_icon="🩺", layout="wide")
+    <!-- 기본정보 -->
+    <div class="card">
+      <label>이름 / 나이 / 혈압·맥박</label>
+      <div class="grid">
+        <input id="p_name" type="text" placeholder="예) 홍길동" />
+        <input id="p_age" type="number" min="0" placeholder="예) 35" />
+      </div>
+      <input id="p_bp" type="text" placeholder="예) 120/80, 맥박 72회" style="margin-top:10px;" />
+    </div>
 
-API_KEY = st.secrets.get("GOOGLE_API_KEY")
-if not API_KEY:
-    st.error("관리자: Streamlit Secrets에 GOOGLE_API_KEY를 설정하세요.")
-    st.stop()
+    <!-- 문진 -->
+    <div class="card">
+      <h2 style="margin:0 0 6px;">문진</h2>
+      <div class="hr"></div>
 
-genai.configure(api_key=API_KEY)
-MODEL = "gemini-1.5-flash"  # 안정 테스트용: quota 친화적
+      <label>현재 불편한 증상</label>
+      <div id="symptomList" class="checklist"></div>
+      <input id="symptom_etc" type="text" placeholder="기타 증상 직접 입력" />
 
-# ========================
-# 유틸: AI 호출
-# ========================
-def call_ai_text(prompt: str, max_output_tokens: int = 512, temperature: float = 0.2) -> str:
-    try:
-        model = genai.GenerativeModel(MODEL)
-        # generation_config 옵션은 모델/SDK 버전에 따라 다를 수 있으니 최소 파라미터만 사용
-        res = model.generate_content(prompt, generation_config={"max_output_tokens": max_output_tokens, "temperature": temperature})
-        # SDK의 반환 형태에 따라 속성 접근
-        text = getattr(res, "text", None)
-        if not text:
-            # fallback: try nested structure
-            try:
-                text = res._result.response.candidates[0].content.parts[0].text
-            except Exception:
-                text = ""
-        return text or ""
-    except Exception as e:
-        return f"❌ AI 호출 오류: {e}"
+      <label style="margin-top:12px;">증상 시작 시점</label>
+      <div class="grid">
+        <select id="onset">
+          <option value="일주일 이내">일주일 이내</option>
+          <option value="1주~1개월">1주 ~ 1개월</option>
+          <option value="1개월~3개월">1개월 ~ 3개월</option>
+          <option value="3개월 이상">3개월 이상</option>
+        </select>
+        <input id="onset_date" type="text" placeholder="발병일 (선택)" />
+      </div>
 
-def call_ai_json(prompt: str, max_output_tokens: int = 512, temperature: float = 0.2) -> Optional[dict]:
-    raw = call_ai_text(prompt, max_output_tokens=max_output_tokens, temperature=temperature)
-    if not raw:
-        return None
-    # Try to extract JSON object from raw text
-    try:
-        # Common patterns: plain JSON, or fenced code block
-        import re
-        m = re.search(r"\{[\s\S]*\}", raw)
-        if m:
-            return json.loads(m.group(0))
-        # last attempt: if raw itself is JSON-like
-        return json.loads(raw)
-    except Exception:
-        # If parsing fails, return as error wrapper
-        return {"_raw_text": raw}
+      <label>증상 원인</label>
+      <div id="causeList" class="checklist"></div>
+      <input id="cause_etc" type="text" placeholder="기타 원인 직접 입력" />
 
-# ========================
-# 레이아웃: 왼쪽 입력 / 오른쪽 결과 (wide)
-# ========================
-st.title("일반 질환 기초 문진표 · 숨쉬는한의원")
-col1, col2 = st.columns([1, 1.2])
+      <label style="margin-top:12px;">과거 병력/약물</label>
+      <textarea id="history" placeholder="예: 아토피약 복용중 / 항히스타민제 복용중 등"></textarea>
 
-with col1:
-    st.header("환자 입력")
-    with st.form("patient_form", clear_on_submit=False):
-        name = st.text_input("이름")
-        age = st.number_input("나이", min_value=0, max_value=120, value=30)
-        bp = st.text_input("혈압/맥박 (예: 120/80, 맥박 72)")
+      <label>내원 빈도</label>
+      <select id="visit">
+        <option value="매일 통원">매일 통원</option>
+        <option value="주 3~6회">주 3~6회</option>
+        <option value="주 1~2회">주 1~2회</option>
+        <option value="기타">기타</option>
+      </select>
+    </div>
 
-        st.markdown("**1) 현재 불편한 증상**")
-        symptoms = st.multiselect("증상 선택 (체크)", [
-            "머리","허리","어깨","발/목/뒤꿈치","무릎","손목","허벅지","뒷목 어깻죽지",
-            "등","손","손가락","엉덩이/골반","팔꿈치","장단지","손/팔 저림",
-            "두통/어지러움","설사","생리통","다리 감각 이상","변비","소화불량",
-            "불안 장애","불면","알레르지질환"
-        ])
-        symptom_etc = st.text_input("기타 증상 (자유서술)")
+    <!-- 요약 + 제안 -->
+    <div class="two">
+      <div class="card">
+        <h2>문진 요약</h2>
+        <div id="summary" class="result" style="min-height:140px;">여기에 요약이 표시됩니다.</div>
+        <button id="btnSummarize" class="btn">① 요약 생성</button>
+      </div>
+      <div class="card">
+        <h2>AI 제안</h2>
+        <div id="aiPlan" class="result" style="min-height:140px;">여기에 제안이 표시됩니다.</div>
+        <button id="btnAIPlan" class="btn">② 제안 생성</button>
+        <div class="muted" style="margin-top:8px;">※ AI 제안은 참고용입니다. 최종 계획은 의료진이 확정합니다.</div>
+      </div>
+    </div>
 
-        st.markdown("**2) 증상 시작 시점**")
-        onset = st.selectbox("증상 시작", ["일주일 이내", "1주~1개월", "1개월~3개월", "3개월 이상"])
-        onset_date = st.text_input("발병일 (선택) — 예: 2025-09-15")
+    <!-- 최종 계획 -->
+    <div class="card">
+      <h2>최종 치료계획 (의료진 선택 + AI 제안 자동 반영)</h2>
+      <div class="grid">
+        <div>
+          <label>질환 분류</label>
+          <select id="cls">
+            <option value="급성질환">급성질환</option>
+            <option value="만성질환">만성질환</option>
+            <option value="웰니스">웰니스</option>
+          </select>
+        </div>
+        <div>
+          <label>치료 기간</label>
+          <select id="period">
+            <option value="1주">1주</option>
+            <option value="2주">2주</option>
+            <option value="3주">3주</option>
+            <option value="4주">4주</option>
+            <option value="1개월 이상">1개월 이상</option>
+          </select>
+        </div>
+      </div>
 
-        st.markdown("**3) 증상 원인**")
-        causes = st.multiselect("원인 선택", [
-            "사고(운동)","사고(교통사고)","사고(상해)","사고(일상생활)",
-            "음식","스트레스","원인모름","기존질환","생활습관 및 환경"
-        ])
-        cause_disease = st.text_input("기존질환 (병명 입력, 선택)")
-        cause_lifestyle = st.text_input("생활습관/환경 (선택)")
+      <label>치료 항목(급여)</label>
+      <div id="covered" class="checklist"></div>
 
-        st.markdown("**4) 과거 병력 / 현재 복용 약물 / 치료 상태**")
-        history = st.text_area("예: 아토피약 복용중 / 항히스타민제 복용 / 물리치료 중 등")
+      <label>치료 항목(비급여)</label>
+      <div id="uncovered" class="checklist"></div>
 
-        st.markdown("**5) 내원 빈도**")
-        visit = st.selectbox("내원 빈도", ["매일 통원","주 3~6회","주 1~2회","기타"])
-        visit_etc = st.text_input("기타(선택)")
+      <button id="btnCompose" class="btn" style="margin-top:10px;">③ 최종 결과 생성 (AI 제안 포함)</button>
+      <button id="btnCopy" class="btn" style="margin-top:10px;">📋 결과 복사</button>
+      <div id="final" class="result" style="margin-top:14px; min-height:140px;">여기에 최종 결과가 표시됩니다.</div>
+    </div>
+  </div>
 
-        generate_button = st.form_submit_button("저장 (입력 반영)")
+<script>
+/** ====== 설정 ====== **/
+const API_KEY = "YOUR_API_KEY_HERE";  // ← 구글 AI Studio API 키 입력
+const MODEL = "gemini-1.5-flash";     // flash 모델 사용
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
 
-    # 버튼들: 요약/AI 제안 별도 호출
-    st.markdown("---")
-    if st.button("① 문진 요약 생성 (AI)"):
-        st.session_state._do_summary = True
-    if st.button("② AI 제안 생성 (분류/치료/주의사항)"):
-        st.session_state._do_plan = True
+/** ====== 체크리스트 항목 ====== **/
+const SYMPTOMS = ["머리","허리","어깨","발/목/뒤꿈치","무릎","손목","허벅지","뒷목 어깻죽지","등","손","손가락","엉덩이/골반","팔꿈치","장단지","손/팔 저림","두통/어지러움","설사","생리통","다리 감각 이상","변비","소화불량","불안 장애","불면","알레르지질환"];
+const CAUSES = ["사고(운동)","사고(교통사고)","사고(상해)","사고(일상생활)","음식","스트레스","원인모름","기존질환","생활습관 및 환경"];
+const COVERED_ITEMS = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"];
+const UNCOVERED_ITEMS = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"];
 
-with col2:
-    st.header("요약 / AI 제안 / 치료계획")
-    # Build patient_data string from current fields (even if form not submitted)
-    def make_patient_text():
-        s = symptoms[:] if symptoms else []
-        if symptom_etc and symptom_etc.strip():
-            s.append(symptom_etc.strip())
-        causes_list = causes[:] if causes else []
-        if cause_disease and cause_disease.strip():
-            causes_list.append(f"기존질환:{cause_disease.strip()}")
-        if cause_lifestyle and cause_lifestyle.strip():
-            causes_list.append(f"생활습관:{cause_lifestyle.strip()}")
-        visit_display = visit_etc if visit == "기타" and visit_etc else visit
-        return (
-            f"이름: {name or '-'}\n"
-            f"나이: {age}\n"
-            f"혈압/맥박: {bp or '-'}\n"
-            f"증상: {', '.join(s) if s else '-'}\n"
-            f"증상 시작: {onset}" + (f" (발병일: {onset_date})" if onset_date else "") + "\n"
-            f"원인: {', '.join(causes_list) if causes_list else '-'}\n"
-            f"과거/복용약/치료: {history or '-'}\n"
-            f"내원 빈도: {visit_display or '-'}\n"
-        )
+/** ====== UI 렌더링 ====== **/
+function renderPills(containerId, items, prefix){
+  const el = document.getElementById(containerId);
+  el.innerHTML = "";
+  items.forEach((txt,i)=>{
+    el.innerHTML += `<label class="pill"><input type="checkbox" id="${prefix}_${i}" value="${txt}"> ${txt}</label>`;
+  });
+}
+renderPills("symptomList",SYMPTOMS,"sym");
+renderPills("causeList",CAUSES,"cause");
+renderPills("covered",COVERED_ITEMS,"cov");
+renderPills("uncovered",UNCOVERED_ITEMS,"unc");
 
-    patient_text = make_patient_text()
+/** ====== 유틸 ====== **/
+function getChecked(prefix, arr){
+  return arr.filter((_,i)=>document.getElementById(`${prefix}_${i}`)?.checked);
+}
+function collectPatient(){
+  const sym = getChecked("sym",SYMPTOMS);
+  const cause = getChecked("cause",CAUSES);
+  const etcSym = document.getElementById("symptom_etc").value.trim();
+  const etcCause = document.getElementById("cause_etc").value.trim();
+  if (etcSym) sym.push(etcSym);
+  if (etcCause) cause.push(etcCause);
 
-    # 문진 요약 출력
-    st.subheader("📌 문진 요약")
-    if st.session_state.get("_do_summary", False):
-        with st.spinner("문진 요약 생성 중..."):
-            prompt = f"다음 환자 문진을 보기 좋게 간결히 요약하라. SOAP 형태 금지.\n\n{patient_text}"
-            summary_out = call_ai_text(prompt, max_output_tokens=400)
-            st.session_state._summary = summary_out
-            st.session_state._do_summary = False
-    summary_to_show = st.session_state.get("_summary", "(아직 생성되지 않음. '① 문진 요약 생성'을 눌러주세요.)")
-    st.text_area("문진 요약", summary_to_show, height=160)
+  return {
+    name: document.getElementById("p_name").value.trim(),
+    age: document.getElementById("p_age").value.trim(),
+    bp: document.getElementById("p_bp").value.trim(),
+    symptoms: sym,
+    onset: document.getElementById("onset").value,
+    onset_date: document.getElementById("onset_date").value.trim(),
+    causes: cause,
+    history: document.getElementById("history").value.trim(),
+    visit: document.getElementById("visit").value
+  };
+}
 
-    # AI 제안 (JSON)
-    st.subheader("🤖 AI 제안 (분류/치료 항목/기간/주의사항)")
-    if st.session_state.get("_do_plan", False):
-        with st.spinner("AI 제안 생성 중..."):
-            plan_prompt = f"""
-너는 한의원 상담 보조 도우미다. 아래 환자 문진을 보고 JSON만 출력하라.
+async function callGemini(prompt){
+  const res = await fetch(API_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ contents:[{ role:"user", parts:[{ text:prompt }]}] })
+  });
+  const j = await res.json();
+  return j?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+
+/** ====== 상태: 방금 받은 AI 제안 캐시 ====== **/
+let lastAI = null;
+
+/** ====== ① 요약 생성 ====== **/
+document.getElementById("btnSummarize").addEventListener("click", async ()=>{
+  const p = collectPatient();
+  const prompt = `환자 문진 요약(진단/처방 금지, 입력 재정리):
+- 이름/나이: ${p.name || "-"} / ${p.age || "-"}
+- 혈압/맥박: ${p.bp || "-"}
+- 주요 증상: ${p.symptoms.length ? p.symptoms.join(", ") : "-"}
+- 증상 시작: ${p.onset}${p.onset_date ? " ("+p.onset_date+")" : ""}
+- 원인: ${p.causes.length ? p.causes.join(", ") : "-"}
+- 과거 병력/약물: ${p.history || "-"}
+- 내원 빈도: ${p.visit || "-"}`;
+  const out = await callGemini(prompt);
+  document.getElementById("summary").innerText = out || "(요약 출력 없음)";
+});
+
+/** ====== ② AI 제안 생성 ====== **/
+document.getElementById("btnAIPlan").addEventListener("click", async ()=>{
+  const p = collectPatient();
+  const ask = `
+너는 숨쉬는한의원 내부 상담 보조 도구다.
+아래 환자 문진을 바탕으로 JSON만 출력하라(추가 텍스트 금지).
+
 필수 필드:
-- classification: \"급성\"|\"만성\"|\"웰니스\"
-- duration: \"1주\"|\"2주\"|\"3주\"|\"4주\"|\"1개월 이상\"
-- covered: 급여 후보 배열 (전침, 통증침 등)
-- uncovered: 비급여 후보 배열
+- classification: "급성"|"만성"|"웰니스"
+- duration: "1주"|"2주"|"3주"|"4주"|"1개월 이상"
+- covered: ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
+- uncovered: ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
 - rationale: 권장 근거
-- objective_comment: 생활습관/재발예방 등
-- caution: 환자 병력/약물 병행 시 주의사항 (빈칸 금지)
+- objective_comment: 생활습관/재발예방 코멘트
+- caution: 병용 주의사항 (없으면 "특이사항 없음")
 
-환자 문진:
-{patient_text}
-"""
-            raw_json = call_ai_json(plan_prompt, max_output_tokens=600)
-            # parse fallback
-            if raw_json is None:
-                st.session_state._ai_json = {"error": "AI 응답 없음"}
-            else:
-                # if raw_json is a dict with _raw_text, keep it separately
-                if isinstance(raw_json, dict) and "_raw_text" in raw_json:
-                    st.session_state._ai_json = {"parse_error": True, "raw": raw_json["_raw_text"]}
-                else:
-                    st.session_state._ai_json = raw_json
-            st.session_state._do_plan = False
+JSON 예시:
+{
+  "classification": "만성",
+  "duration": "4주",
+  "covered": ["체질침","전침"],
+  "uncovered": ["약침"],
+  "rationale": "증상 기간 및 병력 고려",
+  "objective_comment": "수면·스트레스 관리 병행 권장",
+  "caution": "특이사항 없음"
+}
 
-    ai_json = st.session_state.get("_ai_json", None)
-    if ai_json is None:
-        st.info("AI 제안은 '② AI 제안 생성'을 눌러 생성하세요.")
-    else:
-        st.json(ai_json)
+[환자 문진]
+${JSON.stringify(p,null,2)}
+`;
+  const raw = await callGemini(ask);
 
-    # 자동 보완: caution fallback and auto-note for '아토피' in history
-    def ai_caution_fallback(ai_json_obj):
-        if not ai_json_obj:
-            return "특이사항 없음 (AI 출력 누락)"
-        if isinstance(ai_json_obj, dict):
-            c = ai_json_obj.get("caution") or ""
-            if not c.strip():
-                c = "특이사항 없음 (AI 출력 누락)"
-            # if patient history mentions 아토피, append safety tip
-            if "아토피" in (history or "") and "아토피" not in c:
-                c += "\n(자동 안내) 아토피 관련 약물 복용 가능성 — 항히스타민제/스테로이드 병용 시 졸림·피로/피부 자극 등 관찰 필요."
-            return c
-        return "특이사항 없음 (AI 출력 누락)"
+  let parsed = null;
+  try{
+    const m = raw.match(/\{[\s\S]*\}$/);
+    parsed = JSON.parse(m ? m[0] : raw);
+  }catch(e){ parsed = null; }
 
-    st.markdown("---")
-    st.subheader("🩺 최종 치료계획 (의료진 확정) — 항상 보임")
-    # These controls are always visible
-    cls = st.selectbox("질환 분류(의료진 선택)", ["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"])
-    period = st.selectbox("치료 기간(의료진 선택)", ["1주","2주","3주","4주","1개월 이상"])
+  if (parsed && typeof parsed === "object") {
+    // 허용된 카테고리만 필터링
+    parsed.covered = Array.isArray(parsed.covered) ? parsed.covered.filter(x=>COVERED_ITEMS.includes(x)) : [];
+    parsed.uncovered = Array.isArray(parsed.uncovered) ? parsed.uncovered.filter(x=>UNCOVERED_ITEMS.includes(x)) : [];
 
-    covered_options = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"]
-    cov = st.multiselect("치료 항목(급여) — 선택", covered_options)
+    const cleaned = {
+      classification: parsed.classification || "-",
+      duration: parsed.duration || "-",
+      covered: parsed.covered,
+      uncovered: parsed.uncovered,
+      rationale: parsed.rationale || "근거 없음",
+      objective_comment: parsed.objective_comment || "코멘트 없음",
+      caution: parsed.caution || "특이사항 없음"
+    };
 
-    uncovered_options = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"]
-    unc = st.multiselect("치료 항목(비급여) — 선택", uncovered_options)
-    herb = st.selectbox("비급여 맞춤 한약 기간", ["선택 안 함","1개월","2개월","3개월"])
+    lastAI = cleaned;
+    const display = [
+      "📌 Gemini 제안",
+      `- 분류: ${cleaned.classification}`,
+      `- 기간: ${cleaned.duration}`,
+      `- 급여 후보: ${cleaned.covered.length ? cleaned.covered.join(", ") : "-"}`,
+      `- 비급여 후보: ${cleaned.uncovered.length ? cleaned.uncovered.join(", ") : "-"}`,
+      "",
+      `근거: ${cleaned.rationale}`,
+      `📝 객관적 참고: ${cleaned.objective_comment}`,
+      `⚠️ 주의사항: ${cleaned.caution}`
+    ].join("\n");
+    document.getElementById("aiPlan").innerText = display;
+  } else {
+    lastAI = null;
+    document.getElementById("aiPlan").innerText = raw || "(AI 제안 실패)";
+  }
+});
 
-    if st.button("③ 최종 결과 생성 (AI 제안 포함, 의료진 확정)"):
-        lines = []
-        lines.append("=== 환자 문진 요약 ===")
-        lines.append(summary_to_show if summary_to_show else "(요약 미생성)")
-        lines.append("")
-        lines.append("=== AI 제안 (참고) ===")
-        if ai_json:
-            # present caution fallback
-            caution_text = ai_caution_fallback(ai_json)
-            # show core fields if exist
-            if isinstance(ai_json, dict):
-                lines.append(f"- 분류(제안): {ai_json.get('classification','-')}")
-                lines.append(f"- 권장 기간(제안): {ai_json.get('duration','-')}")
-                lines.append(f"- 급여 후보(제안): {', '.join(ai_json.get('covered',[])) if ai_json.get('covered') else '-'}")
-                lines.append(f"- 비급여 후보(제안): {', '.join(ai_json.get('uncovered',[])) if ai_json.get('uncovered') else '-'}")
-                lines.append(f"- 근거: {ai_json.get('rationale','-')}")
-                lines.append(f"- 객관 코멘트: {ai_json.get('objective_comment','-')}")
-                lines.append(f"- 주의사항(보완): {caution_text}")
-            else:
-                lines.append(str(ai_json))
-        else:
-            lines.append("(AI 제안 없음)")
+/** ====== ③ 최종 결과 생성 ====== **/
+document.getElementById("btnCompose").addEventListener("click", ()=>{
+  function getCheckedValues(prefix, arr){
+    return arr.filter((_,i)=>document.getElementById(`${prefix}_${i}`)?.checked);
+  }
+  const covSel = getCheckedValues("cov",COVERED_ITEMS);
+  const uncSel = getCheckedValues("unc",UNCOVERED_ITEMS);
 
-        lines.append("")
-        lines.append("=== 최종 치료계획 (의료진 확정) ===")
-        lines.append(f"- 분류(의료진): {cls} {'(AI:'+ (ai_json.get('classification') if isinstance(ai_json, dict) else '-') +')' if isinstance(ai_json, dict) else ''}")
-        lines.append(f"- 기간(의료진): {period} {'(AI:'+ (ai_json.get('duration') if isinstance(ai_json, dict) else '-') +')' if isinstance(ai_json, dict) else ''}")
-        lines.append(f"- 급여(의료진): {', '.join(cov) if cov else '-'} {('(AI 후보: '+', '.join(ai_json.get('covered'))+')') if isinstance(ai_json, dict) and ai_json.get('covered') else ''}")
-        unc_display = unc[:] if unc else []
-        if herb != "선택 안 함":
-            unc_display.append(f"비급여 맞춤 한약({herb})")
-        lines.append(f"- 비급여(의료진): {', '.join(unc_display) if unc_display else '-'} {('(AI 후보: '+', '.join(ai_json.get('uncovered'))+')') if isinstance(ai_json, dict) and ai_json.get('uncovered') else ''}")
-        lines.append("")
-        lines.append("※ 본 출력은 참고용입니다. 최종 판단은 의료진이 합니다.")
+  const manual = {
+    classification: document.getElementById("cls").value,
+    duration: document.getElementById("period").value,
+    covered: covSel,
+    uncovered: uncSel
+  };
 
-        st.text_area("최종 출력", "\n".join(lines), height=420)
+  const lines = [];
+  lines.push("=== 환자 문진 요약 ===");
+  lines.push(document.getElementById("summary").innerText.trim() || "(요약 없음)");
+  lines.push("");
+  lines.push("=== AI 제안(참고) ===");
+  if (lastAI){
+   

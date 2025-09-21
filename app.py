@@ -12,7 +12,7 @@ if not API_KEY:
     st.stop()
 genai.configure(api_key=API_KEY)
 
-MODEL = "gemini-1.5-flash"  # ⚡ 무조건 flash로 고정
+MODEL = "gemini-1.5-flash"  # ⚡ flash 고정
 
 # ========================
 # 유틸 함수
@@ -89,6 +89,9 @@ if submitted:
     ai_plan = call_ai(plan_prompt)
     st.write(ai_plan)
 
+    # ========================
+    # 치료계획 UI 항상 보이게
+    # ========================
     st.subheader("③ 최종 치료계획 (의료진 확정)")
     cls = st.selectbox("질환 분류", ["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"])
     period = st.selectbox("치료 기간", ["1주","2주","3주","4주","1개월 이상"])

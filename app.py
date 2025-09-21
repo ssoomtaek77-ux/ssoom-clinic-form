@@ -1,151 +1,308 @@
-import streamlit as st
-import google.generativeai as genai
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>일반 질환 기초 문진표 · 숨쉬는한의원</title>
+<style>
+  :root { --bg:#f7f9fb; --card:#ffffff; --txt:#1f2937; --muted:#6b7280; --pri:#2563eb; --priH:#1d4ed8; --line:#e5e7eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, Apple SD Gothic Neo, sans-serif; }
+  .wrap { max-width: 980px; margin: 32px auto; padding: 0 16px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .desc { color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: 14px; box-shadow: 0 1px 6px rgba(0,0,0,.04); padding: 18px; margin: 18px 0; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label { font-weight: 600; font-size: 14px; margin: 10px 0 6px; display:block; }
+  input[type="text"], input[type="number"], textarea, select {
+    width: 100%; padding: 10px 12px; border:1px solid var(--line); border-radius: 10px; background: #fff; font-size: 14px; color:#000;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  .checklist { display:flex; flex-wrap: wrap; gap:8px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); padding:8px 10px; border-radius:999px; background:#fff; font-size:13px; }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:none; padding:12px 16px; background:var(--pri); color:#fff; border-radius: 10px; cursor:pointer; font-weight:600; }
+  .btn:hover { background: var(--priH); }
+  .result { white-space: pre-wrap; background:#fff; color:#111; border:1px solid #e5e7eb; border-radius: 12px; padding: 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width: 860px){ .grid, .two{ grid-template-columns: 1fr; } }
+  .hr { height:1px; background:var(--line); margin:14px 0; }
+  .muted { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>일반 질환 기초 문진표</h1>
+    <div class="desc">작성하신 문진 내용은 진료 목적 외에는 사용되지 않으며, 개인정보 보호법에 따라 안전하게 관리됩니다.</div>
 
-# ========================
-# 기본 설정
-# ========================
-st.set_page_config(page_title="일반 질환 기초 문진표", page_icon="☁️", layout="wide")
+    <!-- 기본정보 -->
+    <div class="card">
+      <label>이름 / 나이 / 혈압·맥박</label>
+      <div class="grid">
+        <input id="p_name" type="text" placeholder="예) 홍길동" />
+        <input id="p_age" type="number" min="0" placeholder="예) 35" />
+      </div>
+      <input id="p_bp" type="text" placeholder="예) 120/80, 맥박 72회" style="margin-top:10px;" />
+    </div>
 
-API_KEY = st.secrets.get("GOOGLE_API_KEY")
-if not API_KEY:
-    st.error("관리자: Streamlit Secrets에 GOOGLE_API_KEY를 설정하세요.")
-    st.stop()
-genai.configure(api_key=API_KEY)
+    <!-- 문진 -->
+    <div class="card">
+      <h2 style="margin:0 0 6px;">문진</h2>
+      <div class="hr"></div>
 
-MODEL = "gemini-1.5-flash"
+      <label>현재 불편한 증상</label>
+      <div id="symptomList" class="checklist"></div>
+      <input id="symptom_etc" type="text" placeholder="기타 증상 직접 입력" />
 
-# ========================
-# 유틸 함수
-# ========================
-def call_ai(prompt: str) -> str:
-    try:
-        model = genai.GenerativeModel(MODEL)
-        res = model.generate_content(prompt)
-        return res.text
-    except Exception as e:
-        return f"❌ 오류: {e}"
+      <label style="margin-top:12px;">증상 시작 시점</label>
+      <div class="grid">
+        <select id="onset">
+          <option value="일주일 이내">일주일 이내</option>
+          <option value="1주~1개월">1주 ~ 1개월</option>
+          <option value="1개월~3개월">1개월 ~ 3개월</option>
+          <option value="3개월 이상">3개월 이상</option>
+        </select>
+        <input id="onset_date" type="text" placeholder="발병일 (선택)" />
+      </div>
 
-def copy_button(label, text, key):
-    st.download_button(
-        label=label,
-        data=text,
-        file_name="result.txt",
-        mime="text/plain",
-        key=key
-    )
+      <label>증상 원인</label>
+      <div id="causeList" class="checklist"></div>
+      <input id="cause_etc" type="text" placeholder="기타 원인 직접 입력" />
 
-# ========================
-# UI 시작
-# ========================
-st.title("일반 질환 기초 문진표")
+      <label style="margin-top:12px;">과거 병력/약물</label>
+      <textarea id="history" placeholder="예: 아토피약 복용중 / 항히스타민제 복용중 등"></textarea>
 
-with st.form("patient_form"):
-    st.subheader("환자 기본정보")
-    name = st.text_input("이름")
-    age = st.number_input("나이", 0, 120, 30)
-    bp = st.text_input("혈압/맥박")
+      <label>내원 빈도</label>
+      <select id="visit">
+        <option value="매일 통원">매일 통원</option>
+        <option value="주 3~6회">주 3~6회</option>
+        <option value="주 1~2회">주 1~2회</option>
+        <option value="기타">기타</option>
+      </select>
+    </div>
 
-    st.subheader("1) 현재 불편한 증상")
-    symptoms = st.multiselect(
-        "증상 선택",
-        ["머리","허리","어깨","무릎","손목","두통/어지러움","불면","알레르기","기타"],
-    )
-    symptom_etc = st.text_input("기타 증상 (선택)")
+    <!-- 요약 + 제안 -->
+    <div class="two">
+      <div class="card">
+        <h2>문진 요약</h2>
+        <div id="summary" class="result" style="min-height:140px;">여기에 요약이 표시됩니다.</div>
+        <button id="btnSummarize" class="btn">① 요약 생성</button>
+      </div>
+      <div class="card">
+        <h2>AI 제안</h2>
+        <div id="aiPlan" class="result" style="min-height:140px;">여기에 제안이 표시됩니다.</div>
+        <button id="btnAIPlan" class="btn">② 제안 생성</button>
+        <div class="muted" style="margin-top:8px;">※ AI 제안은 참고용입니다. 최종 계획은 의료진이 확정합니다.</div>
+      </div>
+    </div>
 
-    st.subheader("2) 증상 시작 시점")
-    onset = st.selectbox("선택", ["일주일 이내","1주~1개월","1개월~3개월","3개월 이상"])
+    <!-- 최종 계획 -->
+    <div class="card">
+      <h2>최종 치료계획 (의료진 선택 + AI 제안 자동 반영)</h2>
+      <div class="grid">
+        <div>
+          <label>질환 분류</label>
+          <select id="cls">
+            <option value="급성질환">급성질환</option>
+            <option value="만성질환">만성질환</option>
+            <option value="웰니스">웰니스</option>
+          </select>
+        </div>
+        <div>
+          <label>치료 기간</label>
+          <select id="period">
+            <option value="1주">1주</option>
+            <option value="2주">2주</option>
+            <option value="3주">3주</option>
+            <option value="4주">4주</option>
+            <option value="1개월 이상">1개월 이상</option>
+          </select>
+        </div>
+      </div>
 
-    st.subheader("3) 증상 원인")
-    causes = st.multiselect("원인 선택", ["사고","음식","스트레스","원인모름","기존질환","생활습관"])
-    disease = st.text_input("기존질환 (선택)")
-    lifestyle = st.text_input("생활습관/환경 (선택)")
+      <label>치료 항목(급여)</label>
+      <div id="covered" class="checklist"></div>
 
-    st.subheader("4) 과거 병력/복용 중인 약물/치료")
-    history = st.text_area("내용 입력")
+      <label>치료 항목(비급여)</label>
+      <div id="uncovered" class="checklist"></div>
 
-    st.subheader("5) 내원 빈도")
-    visit = st.selectbox("선택", ["매일 통원","주 3~6회","주 1~2회","기타"])
+      <button id="btnCompose" class="btn" style="margin-top:10px;">③ 최종 결과 생성 (AI 제안 포함)</button>
+      <button id="btnCopyFinal" class="btn" style="margin-top:10px;">복사</button>
+      <div id="final" class="result" style="margin-top:14px; min-height:140px;">여기에 최종 결과가 표시됩니다.</div>
+    </div>
+  </div>
 
-    submitted = st.form_submit_button("① 문진 요약 & AI 제안 생성")
+<script>
+/** ====== 설정 ====== **/
+const API_KEY = "YOUR_API_KEY_HERE";  // ← 구글 AI Studio API 키 입력
+const MODEL = "gemini-1.5-flash";
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${API_KEY}`;
 
-# ========================
-# 데이터 구조화
-# ========================
-if submitted:
-    patient_data = f"""
-이름: {name}, 나이: {age}
-혈압/맥박: {bp}
-증상: {", ".join(symptoms+[symptom_etc] if symptom_etc else symptoms)}
-증상 시작: {onset}
-원인: {", ".join(causes)} {disease} {lifestyle}
-과거/약물: {history}
-내원 빈도: {visit}
-"""
+/** ====== 체크리스트 항목 ====== **/
+const SYMPTOMS = ["머리","허리","어깨","발/목/뒤꿈치","무릎","손목","허벅지","뒷목 어깻죽지","등","손","손가락","엉덩이/골반","팔꿈치","장단지","손/팔 저림","두통/어지러움","설사","생리통","다리 감각 이상","변비","소화불량","불안 장애","불면","알레르지질환"];
+const CAUSES = ["사고(운동)","사고(교통사고)","사고(상해)","사고(일상생활)","음식","스트레스","원인모름","기존질환","생활습관 및 환경"];
+const COVERED_ITEMS = ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"];
+const UNCOVERED_ITEMS = ["약침","약침패치","테이핑요법","비급여 맞춤 한약"];
 
-    # 문진 요약
-    summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
-    st.session_state["summary"] = summary
+/** ====== UI 렌더링 ====== **/
+function renderPills(containerId, items, prefix){
+  const el = document.getElementById(containerId);
+  el.innerHTML = "";
+  items.forEach((txt,i)=>{
+    el.innerHTML += `<label class="pill"><input type="checkbox" id="${prefix}_${i}" value="${txt}"> ${txt}</label>`;
+  });
+}
+renderPills("symptomList",SYMPTOMS,"sym");
+renderPills("causeList",CAUSES,"cause");
+renderPills("covered",COVERED_ITEMS,"cov");
+renderPills("uncovered",UNCOVERED_ITEMS,"unc");
 
-    # AI 제안
-    plan_prompt = f"""
-너는 한의원 상담 보조 도우미다.
-환자 문진을 보고:
-1) 급성/만성/웰니스 분류
-2) 권장 치료기간
-3) 권장 급여/비급여 항목 (반드시 내가 제공한 카테고리 안에서만 선택)
-4) 복용 중 약물이 있다면 병용 시 주의사항
+/** ====== 유틸 ====== **/
+function getChecked(prefix, arr){
+  return arr.filter((_,i)=>document.getElementById(`${prefix}_${i}`)?.checked);
+}
+function collectPatient(){
+  const sym = getChecked("sym",SYMPTOMS);
+  const cause = getChecked("cause",CAUSES);
+  const etcSym = document.getElementById("symptom_etc").value.trim();
+  const etcCause = document.getElementById("cause_etc").value.trim();
+  if (etcSym) sym.push(etcSym);
+  if (etcCause) cause.push(etcCause);
+
+  return {
+    name: document.getElementById("p_name").value.trim(),
+    age: document.getElementById("p_age").value.trim(),
+    bp: document.getElementById("p_bp").value.trim(),
+    symptoms: sym,
+    onset: document.getElementById("onset").value,
+    onset_date: document.getElementById("onset_date").value.trim(),
+    causes: cause,
+    history: document.getElementById("history").value.trim(),
+    visit: document.getElementById("visit").value
+  };
+}
+async function callGemini(prompt){
+  const res = await fetch(API_URL,{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ contents:[{ role:"user", parts:[{ text:prompt }]}] })
+  });
+  const j = await res.json();
+  return j?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+}
+function copyText(id){
+  const text = document.getElementById(id).innerText.trim();
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(()=>{ alert("복사되었습니다."); });
+}
+
+/** ====== 상태: 방금 받은 AI 제안 캐시 ====== **/
+let lastAI = null;
+
+/** ====== ① 요약 생성 ====== **/
+document.getElementById("btnSummarize").addEventListener("click", async ()=>{
+  const p = collectPatient();
+  const prompt = `환자 문진 요약(진단/처방 금지, 입력 재정리):
+- 이름/나이: ${p.name || "-"} / ${p.age || "-"}
+- 혈압/맥박: ${p.bp || "-"}
+- 주요 증상: ${p.symptoms.length ? p.symptoms.join(", ") : "-"}
+- 증상 시작: ${p.onset}${p.onset_date ? " ("+p.onset_date+")" : ""}
+- 원인: ${p.causes.length ? p.causes.join(", ") : "-"}
+- 과거 병력/약물: ${p.history || "-"}
+- 내원 빈도: ${p.visit || "-"}`;
+  const out = await callGemini(prompt);
+  document.getElementById("summary").innerText = out || "(요약 출력 없음)";
+});
+
+/** ====== ② AI 제안 생성 ====== **/
+document.getElementById("btnAIPlan").addEventListener("click", async ()=>{
+  const p = collectPatient();
+  const ask = `
+너는 숨쉬는한의원 내부 상담 보조 도구다.
+아래 환자 문진을 바탕으로 JSON만 출력하라(추가 텍스트 금지).
+
+필수 필드:
+- classification
+- duration
+- covered: 내가 준 리스트 안에서만 선택
+- uncovered: 내가 준 리스트 안에서만 선택
+- rationale
+- objective_comment
+- caution
+- extra_suggestion: 내가 준 리스트 밖에서 추가로 도움이 될 수 있다고 생각되는 치료법이나 관리법 (없으면 "없음")
 
 문진 내용:
-{patient_data}
-"""
-    ai_plan = call_ai(plan_prompt)
-    st.session_state["ai_plan"] = ai_plan
+${JSON.stringify(p,null,2)}
+`;
+  const raw = await callGemini(ask);
+  let parsed = null;
+  try{
+    const m = raw.match(/\{[\s\S]*\}$/);
+    parsed = JSON.parse(m ? m[0] : raw);
+  }catch(e){
+    parsed = null;
+  }
 
-# ========================
-# 문진 요약 (고정)
-# ========================
-st.subheader("📌 문진 요약")
-if "summary" in st.session_state:
-    st.write(st.session_state["summary"])
-    copy_button("요약 복사", st.session_state["summary"], key="copy_summary")
-else:
-    st.info("아직 생성하지 않았습니다.")
+  if (parsed) {
+    lastAI = parsed;
+    const display = [
+      "📌 Gemini 제안",
+      `- 분류: ${parsed.classification || "-"}`,
+      `- 기간: ${parsed.duration || "-"}`,
+      `- 급여 후보: ${(parsed.covered||[]).join(", ") || "-"}`,
+      `- 비급여 후보: ${(parsed.uncovered||[]).join(", ") || "-"}`,
+      "",
+      `근거: ${parsed.rationale || "-"}`,
+      `📝 객관적 참고: ${parsed.objective_comment || "-"}`,
+      `⚠️ 주의사항: ${parsed.caution || "-"}`,
+      `💡 추가 제안: ${parsed.extra_suggestion || "없음"}`
+    ].join("\n");
+    document.getElementById("aiPlan").innerText = display;
+  } else {
+    lastAI = null;
+    document.getElementById("aiPlan").innerText = raw || "(AI 제안 생성 실패)";
+  }
+});
 
-# ========================
-# AI 제안 (고정)
-# ========================
-st.subheader("🤖 AI 제안")
-if "ai_plan" in st.session_state:
-    st.write(st.session_state["ai_plan"])
-    copy_button("AI 제안 복사", st.session_state["ai_plan"], key="copy_plan")
-else:
-    st.info("아직 생성하지 않았습니다.")
+/** ====== ③ 최종 결과 생성 ====== **/
+document.getElementById("btnCompose").addEventListener("click", ()=>{
+  function getCheckedValues(prefix, arr){
+    return arr.filter((_,i)=>document.getElementById(`${prefix}_${i}`)?.checked);
+  }
+  const covSel = getCheckedValues("cov",COVERED_ITEMS);
+  const uncSel = getCheckedValues("unc",UNCOVERED_ITEMS);
 
-# ========================
-# 최종 치료계획 (항상 보이게 고정)
-# ========================
-st.subheader("③ 최종 치료계획 (의료진 확정)")
-cls = st.selectbox("질환 분류", ["급성질환(10~14일)","만성질환(15일~3개월)","웰니스(3개월 이상)"])
-period = st.selectbox("치료 기간", ["1주","2주","3주","4주","1개월 이상"])
+  const manual = {
+    classification: document.getElementById("cls").value,
+    duration: document.getElementById("period").value,
+    covered: covSel,
+    uncovered: uncSel
+  };
 
-cov = st.multiselect("치료 항목(급여)", ["전침","통증침","체질침","건부항","습부항","전자뜸","핫팩","ICT","보험한약"])
-unc = st.multiselect("치료 항목(비급여)", ["약침","약침패치","테이핑요법","비급여 맞춤 한약"])
-herb = st.radio("맞춤 한약 기간", ["선택 안 함","1개월","2개월","3개월"], index=0)
+  const lines = [];
+  lines.push("=== 환자 문진 요약 ===");
+  lines.push(document.getElementById("summary").innerText.trim() || "(요약 미생성)");
+  lines.push("");
+  lines.push("=== AI 제안(참고) ===");
+  if (lastAI){
+    lines.push(`- 분류: ${lastAI.classification}`);
+    lines.push(`- 기간: ${lastAI.duration}`);
+    lines.push(`- 급여 후보: ${lastAI.covered.join(", ")}`);
+    lines.push(`- 비급여 후보: ${lastAI.uncovered.join(", ")}`);
+    lines.push(`근거: ${lastAI.rationale}`);
+    lines.push(`📝 객관적 참고: ${lastAI.objective_comment}`);
+    lines.push(`⚠️ 주의사항: ${lastAI.caution}`);
+    lines.push(`💡 추가 제안: ${lastAI.extra_suggestion}`);
+  }
+  lines.push("");
+  lines.push("=== 최종 치료계획 (의료진 확정) ===");
+  lines.push(`- 분류: ${manual.classification}`);
+  lines.push(`- 기간: ${manual.duration}`);
+  lines.push(`- 급여: ${manual.covered.join(", ") || "-"}`);
+  lines.push(`- 비급여: ${manual.uncovered.join(", ") || "-"}`);
 
-if st.button("최종 결과 생성"):
-    final_text = f"""
-=== 환자 문진 요약 ===
-{st.session_state.get("summary","(요약 없음)")}
-
-=== Gemini 제안 ===
-{st.session_state.get("ai_plan","(AI 제안 없음)")}
-
-=== 최종 치료계획 (의료진 확정) ===
-- 분류: {cls}
-- 기간: {period}
-- 급여: {", ".join(cov) if cov else "-"}
-- 비급여: {", ".join(unc) if unc else "-"}
-- 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
-"""
-    st.text_area("최종 출력", final_text, height=300)
-    copy_button("최종 결과 복사", final_text, key="copy_final")
+  document.getElementById("final").innerText = lines.join("\n");
+});
+document.getElementById("btnCopyFinal").addEventListener("click", ()=>copyText("final"));
+</script>
+</body>
+</html>

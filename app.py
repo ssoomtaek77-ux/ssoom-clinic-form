@@ -1,5 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
+import pyperclip
 
 # ========================
 # 기본 설정
@@ -12,7 +13,7 @@ if not API_KEY:
     st.stop()
 genai.configure(api_key=API_KEY)
 
-MODEL = "gemini-1.5-flash"  # flash 고정
+MODEL = "gemini-1.5-flash"  # ✅ 고정
 
 # ========================
 # 유틸 함수
@@ -57,7 +58,7 @@ with st.form("patient_form"):
     st.subheader("5) 내원 빈도")
     visit = st.selectbox("선택", ["매일 통원","주 3~6회","주 1~2회","기타"])
 
-    submitted = st.form_submit_button("① 문진 요약 생성")
+    submitted = st.form_submit_button("① 문진 요약 & AI 제안")
 
 # ========================
 # 요약 + AI 제안
@@ -79,17 +80,35 @@ if submitted:
     summary = call_ai(f"다음 환자 문진 내용을 보기 좋게 요약:\n{patient_data}")
     st.write(summary)
 
-    st.subheader("② AI 제안 (분류/치료/기간/주의사항)")
+    st.subheader("② AI 제안 (카테고리 기반 + 추가 추천)")
     plan_prompt = f"""
-너는 한의원 상담 보조 도우미다.
-환자 문진을 보고:
-1) 급성/만성/웰니스 분류
-2) 권장 치료기간
-3) 환자가 선택한 카테고리(급여/비급여) 안에서 우선 추천
-4) 추가로 필요하다고 판단되는 치료법은 '추가 추천'으로 별도 제안
-5) 복용 중 약물이 있다면 병용 시 주의사항
+너는 한의원 상담 보조 도우미다. 
+환자 문진을 보고 다음 항목을 제시하라:
 
-문진 내용:
+1) 급성/만성/웰니스 분류 (택1)
+2) 권장 치료기간 (1주/2주/3주/4주/1개월 이상 중 택1)
+3) 권장 치료항목:
+   - 반드시 아래 제공된 카테고리 안에서 선택.
+   - 카테고리 밖에서 필요하다고 판단되는 치료는 "추가 추천"에 별도 제시.
+
+   [급여 항목]: 전침, 통증침, 체질침, 건부항, 습부항, 전자뜸, 핫팩, ICT, 보험한약
+   [비급여 항목]: 약침, 약침패치, 테이핑요법, 비급여 맞춤 한약
+
+4) 복용 중 약물이 있다면 병용 시 주의사항.
+
+출력 형식:
+=== 분류 ===
+...
+=== 권장 치료기간 ===
+...
+=== 권장 항목 (급여/비급여 중) ===
+...
+=== 추가 추천 ===
+...
+=== 주의사항 ===
+...
+
+환자 문진:
 {patient_data}
 """
     ai_plan = call_ai(plan_prompt)
@@ -122,4 +141,8 @@ if st.button("최종 결과 생성"):
 - 맞춤 한약: {herb if herb!="선택 안 함" else "-"}
 """
     st.text_area("최종 출력", final_text, height=300)
-    st.button("📋 복사하기", on_click=lambda: st.session_state.update({"_copy": final_text}))
+
+    # 복사 버튼
+    if st.button("📋 복사하기"):
+        pyperclip.copy(final_text)
+        st.success("최종 결과가 클립보드에 복사되었습니다 ✅")
